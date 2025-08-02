@@ -19,12 +19,12 @@ type Category struct {
 }
 
 type Expense struct {
-	ID            int            `json:"id"`
-	Amount        float64        `json:"amount"`
-	SubcategoryID int            `json:"subcategory_id"`
-	UserID        sql.NullInt64  `json:"user_id"`
-	Note          sql.NullString `json:"note"`
-	CreatedAt     string         `json:"created_at"`
+	ID            int     `json:"id"`
+	Amount        float64 `json:"amount"`
+	SubcategoryID int     `json:"subcategory_id"`
+	UserID        *int    `json:"user_id"`
+	Note          *string `json:"note"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 var db *sql.DB

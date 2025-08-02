@@ -184,8 +184,19 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		expense.UserID = userID
-		expense.Note = note
+		if userID.Valid {
+			userIDValue := int(userID.Int64)
+			expense.UserID = &userIDValue
+		} else {
+			expense.UserID = nil
+		}
+
+		if note.Valid {
+			expense.Note = &note.String
+		} else {
+			expense.Note = nil
+		}
+
 		expenses = append(expenses, expense)
 	}
 
