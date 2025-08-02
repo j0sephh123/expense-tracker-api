@@ -1,0 +1,1 @@
+All expenses GET `expenses`

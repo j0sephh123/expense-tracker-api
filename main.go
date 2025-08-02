@@ -30,6 +30,7 @@ func main() {
 	logger.Info(fmt.Sprintf("Server running at %s:%s", host, port))
 
 	http.HandleFunc("/api/v1/categories", getCategoriesHandler)
+	http.HandleFunc("/api/v1/expenses", getExpensesHandler)
 	http.HandleFunc("/api/v1/health", healthCheckHandler)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
