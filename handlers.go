@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 )
 
 func getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +93,30 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func parseCommaSeparatedInts(s string) ([]int, error) {
+	if s == "" {
+		return []int{}, nil
+	}
+
+	parts := strings.Split(s, ",")
+	result := make([]int, 0, len(parts))
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		val, err := strconv.Atoi(part)
+		if err != nil {
+			return nil, fmt.Errorf("invalid integer: %s", part)
+		}
+		result = append(result, val)
+	}
+
+	return result, nil
+}
+
 func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -98,18 +124,86 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userIDStr := r.URL.Query().Get("user_id")
+	categoryIDStr := r.URL.Query().Get("category_id")
+	subcategoryIDStr := r.URL.Query().Get("subcategory_id")
+	dateFromStr := r.URL.Query().Get("date_from")
+	dateToStr := r.URL.Query().Get("date_to")
+	groupByStr := r.URL.Query().Get("group_by")
+	orderByStr := r.URL.Query().Get("order_by")
+	orderDirStr := r.URL.Query().Get("order_dir")
 	aggregatesOnlyStr := r.URL.Query().Get("aggregates_only")
 
-	logger.Info(fmt.Sprintf("Received user_id: '%s', aggregates_only: '%s'", userIDStr, aggregatesOnlyStr))
+	logger.Info(fmt.Sprintf("Received user_id: '%s', category_id: '%s', subcategory_id: '%s', date_from: '%s', date_to: '%s', group_by: '%s', order_by: '%s', order_dir: '%s', aggregates_only: '%s'", userIDStr, categoryIDStr, subcategoryIDStr, dateFromStr, dateToStr, groupByStr, orderByStr, orderDirStr, aggregatesOnlyStr))
+
+	if categoryIDStr != "" && subcategoryIDStr != "" {
+		http.Error(w, "Cannot use both category_id and subcategory_id in the same query", http.StatusBadRequest)
+		return
+	}
+
+	orderBy := "created_at"
+	if orderByStr != "" {
+		switch orderByStr {
+		case "amount":
+			orderBy = "e.amount"
+		case "date":
+			orderBy = "e.created_at"
+		default:
+			http.Error(w, "Invalid order_by parameter. Must be 'amount' or 'date'", http.StatusBadRequest)
+			return
+		}
+	}
+
+	orderDir := "DESC"
+	if orderDirStr != "" {
+		switch orderDirStr {
+		case "asc":
+			orderDir = "ASC"
+		case "desc":
+			orderDir = "DESC"
+		default:
+			http.Error(w, "Invalid order_dir parameter. Must be 'asc' or 'desc'", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if dateFromStr != "" {
+		if _, err := time.Parse("2006-01-02", dateFromStr); err != nil {
+			http.Error(w, "Invalid date_from parameter. Must be in YYYY-MM-DD format", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if dateToStr != "" {
+		if _, err := time.Parse("2006-01-02", dateToStr); err != nil {
+			http.Error(w, "Invalid date_to parameter. Must be in YYYY-MM-DD format", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if groupByStr != "" {
+		switch groupByStr {
+		case "category", "subcategory", "user":
+			// Valid group_by values
+		default:
+			http.Error(w, "Invalid group_by parameter. Must be 'category', 'subcategory', or 'user'", http.StatusBadRequest)
+			return
+		}
+	}
 
 	aggregatesOnly := false
 	if aggregatesOnlyStr == "true" {
 		aggregatesOnly = true
 	}
 
+	if groupByStr != "" {
+		handleGroupedExpenses(w, userIDStr, categoryIDStr, subcategoryIDStr, dateFromStr, dateToStr, groupByStr, orderBy, orderDir)
+		return
+	}
+
 	if aggregatesOnly {
-		query := "SELECT SUM(amount) as total_amount FROM expenses"
+		query := "SELECT SUM(e.amount) as total_amount FROM expenses e"
 		var args []interface{}
+		var conditions []string
 
 		if userIDStr != "" {
 			userID, err := strconv.Atoi(userIDStr)
@@ -119,11 +213,72 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if userID == 0 {
-				query += " WHERE user_id IS NULL"
+				conditions = append(conditions, "e.user_id IS NULL")
 			} else {
-				query += " WHERE user_id = ?"
+				conditions = append(conditions, "e.user_id = ?")
 				args = append(args, userID)
 			}
+		}
+
+		if categoryIDStr != "" {
+			logger.Info(fmt.Sprintf("Processing category_id: '%s'", categoryIDStr))
+			categoryIDs, err := parseCommaSeparatedInts(categoryIDStr)
+			if err != nil {
+				logger.Error(fmt.Sprintf("Failed to parse category_id: %v", err))
+				http.Error(w, "Invalid category_id parameter", http.StatusBadRequest)
+				return
+			}
+
+			logger.Info(fmt.Sprintf("Parsed category IDs: %v", categoryIDs))
+
+			if len(categoryIDs) > 0 {
+				query += " JOIN subcategories s ON e.subcategory_id = s.id"
+				placeholders := make([]string, len(categoryIDs))
+				for i := range categoryIDs {
+					placeholders[i] = "?"
+					args = append(args, categoryIDs[i])
+				}
+				condition := fmt.Sprintf("s.category_id IN (%s)", strings.Join(placeholders, ","))
+				conditions = append(conditions, condition)
+				logger.Info(fmt.Sprintf("Added category condition: %s", condition))
+			}
+		}
+
+		if subcategoryIDStr != "" {
+			logger.Info(fmt.Sprintf("Processing subcategory_id: '%s'", subcategoryIDStr))
+			subcategoryIDs, err := parseCommaSeparatedInts(subcategoryIDStr)
+			if err != nil {
+				logger.Error(fmt.Sprintf("Failed to parse subcategory_id: %v", err))
+				http.Error(w, "Invalid subcategory_id parameter", http.StatusBadRequest)
+				return
+			}
+
+			logger.Info(fmt.Sprintf("Parsed subcategory IDs: %v", subcategoryIDs))
+
+			if len(subcategoryIDs) > 0 {
+				placeholders := make([]string, len(subcategoryIDs))
+				for i := range subcategoryIDs {
+					placeholders[i] = "?"
+					args = append(args, subcategoryIDs[i])
+				}
+				condition := fmt.Sprintf("e.subcategory_id IN (%s)", strings.Join(placeholders, ","))
+				conditions = append(conditions, condition)
+				logger.Info(fmt.Sprintf("Added subcategory condition: %s", condition))
+			}
+		}
+
+		if dateFromStr != "" {
+			conditions = append(conditions, "DATE(e.created_at) >= ?")
+			args = append(args, dateFromStr)
+		}
+
+		if dateToStr != "" {
+			conditions = append(conditions, "DATE(e.created_at) <= ?")
+			args = append(args, dateToStr)
+		}
+
+		if len(conditions) > 0 {
+			query += " WHERE " + strings.Join(conditions, " AND ")
 		}
 
 		var totalAmount sql.NullFloat64
@@ -143,8 +298,9 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "SELECT id, amount, subcategory_id, user_id, note, created_at FROM expenses"
+	query := "SELECT e.id, e.amount, e.subcategory_id, e.user_id, e.note, e.created_at FROM expenses e"
 	var args []interface{}
+	var conditions []string
 
 	if userIDStr != "" {
 		userID, err := strconv.Atoi(userIDStr)
@@ -154,14 +310,63 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if userID == 0 {
-			query += " WHERE user_id IS NULL"
+			conditions = append(conditions, "e.user_id IS NULL")
 		} else {
-			query += " WHERE user_id = ?"
+			conditions = append(conditions, "e.user_id = ?")
 			args = append(args, userID)
 		}
 	}
 
-	query += " ORDER BY created_at DESC"
+	if categoryIDStr != "" {
+		categoryIDs, err := parseCommaSeparatedInts(categoryIDStr)
+		if err != nil {
+			http.Error(w, "Invalid category_id parameter", http.StatusBadRequest)
+			return
+		}
+
+		if len(categoryIDs) > 0 {
+			query += " JOIN subcategories s ON e.subcategory_id = s.id"
+			placeholders := make([]string, len(categoryIDs))
+			for i := range categoryIDs {
+				placeholders[i] = "?"
+				args = append(args, categoryIDs[i])
+			}
+			conditions = append(conditions, fmt.Sprintf("s.category_id IN (%s)", strings.Join(placeholders, ",")))
+		}
+	}
+
+	if subcategoryIDStr != "" {
+		subcategoryIDs, err := parseCommaSeparatedInts(subcategoryIDStr)
+		if err != nil {
+			http.Error(w, "Invalid subcategory_id parameter", http.StatusBadRequest)
+			return
+		}
+
+		if len(subcategoryIDs) > 0 {
+			placeholders := make([]string, len(subcategoryIDs))
+			for i := range subcategoryIDs {
+				placeholders[i] = "?"
+				args = append(args, subcategoryIDs[i])
+			}
+			conditions = append(conditions, fmt.Sprintf("e.subcategory_id IN (%s)", strings.Join(placeholders, ",")))
+		}
+	}
+
+	if dateFromStr != "" {
+		conditions = append(conditions, "DATE(e.created_at) >= ?")
+		args = append(args, dateFromStr)
+	}
+
+	if dateToStr != "" {
+		conditions = append(conditions, "DATE(e.created_at) <= ?")
+		args = append(args, dateToStr)
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query += fmt.Sprintf(" ORDER BY %s %s", orderBy, orderDir)
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -208,4 +413,159 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(expenses)
+}
+
+func handleGroupedExpenses(w http.ResponseWriter, userIDStr, categoryIDStr, subcategoryIDStr, dateFromStr, dateToStr, groupByStr, orderBy, orderDir string) {
+	var query string
+	var args []interface{}
+	var conditions []string
+
+	switch groupByStr {
+	case "category":
+		query = `
+			SELECT 
+				c.id as category_id,
+				c.name as category_name,
+				SUM(e.amount) as total_amount,
+				COUNT(*) as expense_count
+			FROM expenses e
+			JOIN subcategories s ON e.subcategory_id = s.id
+			JOIN categories c ON s.category_id = c.id
+		`
+	case "subcategory":
+		query = `
+			SELECT 
+				s.id as subcategory_id,
+				s.name as subcategory_name,
+				SUM(e.amount) as total_amount,
+				COUNT(*) as expense_count
+			FROM expenses e
+			JOIN subcategories s ON e.subcategory_id = s.id
+		`
+	case "user":
+		query = `
+			SELECT 
+				COALESCE(e.user_id, 0) as user_id,
+				COALESCE(u.display_name, 'Unknown User') as user_name,
+				SUM(e.amount) as total_amount,
+				COUNT(*) as expense_count
+			FROM expenses e
+			LEFT JOIN users u ON e.user_id = u.id
+		`
+	}
+
+	if userIDStr != "" {
+		userID, err := strconv.Atoi(userIDStr)
+		if err != nil {
+			http.Error(w, "Invalid user_id parameter", http.StatusBadRequest)
+			return
+		}
+
+		if userID == 0 {
+			conditions = append(conditions, "e.user_id IS NULL")
+		} else {
+			conditions = append(conditions, "e.user_id = ?")
+			args = append(args, userID)
+		}
+	}
+
+	if categoryIDStr != "" {
+		categoryIDs, err := parseCommaSeparatedInts(categoryIDStr)
+		if err != nil {
+			http.Error(w, "Invalid category_id parameter", http.StatusBadRequest)
+			return
+		}
+
+		if len(categoryIDs) > 0 {
+			placeholders := make([]string, len(categoryIDs))
+			for i := range categoryIDs {
+				placeholders[i] = "?"
+				args = append(args, categoryIDs[i])
+			}
+			conditions = append(conditions, fmt.Sprintf("s.category_id IN (%s)", strings.Join(placeholders, ",")))
+		}
+	}
+
+	if subcategoryIDStr != "" {
+		subcategoryIDs, err := parseCommaSeparatedInts(subcategoryIDStr)
+		if err != nil {
+			http.Error(w, "Invalid subcategory_id parameter", http.StatusBadRequest)
+			return
+		}
+
+		if len(subcategoryIDs) > 0 {
+			placeholders := make([]string, len(subcategoryIDs))
+			for i := range subcategoryIDs {
+				placeholders[i] = "?"
+				args = append(args, subcategoryIDs[i])
+			}
+			conditions = append(conditions, fmt.Sprintf("e.subcategory_id IN (%s)", strings.Join(placeholders, ",")))
+		}
+	}
+
+	if dateFromStr != "" {
+		conditions = append(conditions, "DATE(e.created_at) >= ?")
+		args = append(args, dateFromStr)
+	}
+
+	if dateToStr != "" {
+		conditions = append(conditions, "DATE(e.created_at) <= ?")
+		args = append(args, dateToStr)
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query += " GROUP BY "
+	switch groupByStr {
+	case "category":
+		query += "c.id, c.name"
+	case "subcategory":
+		query += "s.id, s.name"
+	case "user":
+		query += "e.user_id, u.display_name"
+	}
+
+	query += fmt.Sprintf(" ORDER BY total_amount %s", orderDir)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to query grouped expenses: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var groupedExpenses []map[string]interface{}
+
+	for rows.Next() {
+		var groupName string
+		var totalAmount float64
+		var expenseCount int
+		var groupID int
+
+		if err := rows.Scan(&groupID, &groupName, &totalAmount, &expenseCount); err != nil {
+			logger.Error(fmt.Sprintf("Failed to scan grouped expense row: %v", err))
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		group := map[string]interface{}{
+			"group_name": groupName,
+			"total":      totalAmount,
+			"count":      expenseCount,
+		}
+
+		groupedExpenses = append(groupedExpenses, group)
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Error(fmt.Sprintf("Error iterating over grouped rows: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(groupedExpenses)
 }

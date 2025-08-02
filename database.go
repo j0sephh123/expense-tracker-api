@@ -27,6 +27,13 @@ type Expense struct {
 	CreatedAt     string  `json:"created_at"`
 }
 
+type GroupedExpense struct {
+	GroupName string    `json:"group_name"`
+	Total     float64   `json:"total"`
+	Count     int       `json:"count"`
+	Expenses  []Expense `json:"expenses"`
+}
+
 var db *sql.DB
 
 func initDB() error {
