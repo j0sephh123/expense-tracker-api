@@ -75,6 +75,9 @@ func getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if categories == nil {
+		categories = []Category{}
+	}
 	json.NewEncoder(w).Encode(categories)
 }
 
@@ -412,6 +415,9 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if expenses == nil {
+		expenses = []Expense{}
+	}
 	json.NewEncoder(w).Encode(expenses)
 }
 
@@ -567,5 +573,8 @@ func handleGroupedExpenses(w http.ResponseWriter, userIDStr, categoryIDStr, subc
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if groupedExpenses == nil {
+		groupedExpenses = []map[string]interface{}{}
+	}
 	json.NewEncoder(w).Encode(groupedExpenses)
 }
