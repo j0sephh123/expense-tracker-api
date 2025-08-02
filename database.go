@@ -19,12 +19,16 @@ type Category struct {
 }
 
 type Expense struct {
-	ID            int     `json:"id"`
-	Amount        float64 `json:"amount"`
-	SubcategoryID int     `json:"subcategory_id"`
-	UserID        *int    `json:"user_id"`
-	Note          *string `json:"note"`
-	CreatedAt     string  `json:"created_at"`
+	ID              int     `json:"id"`
+	Amount          float64 `json:"amount"`
+	SubcategoryID   int     `json:"subcategory_id"`
+	UserID          *int    `json:"user_id"`
+	Note            *string `json:"note"`
+	CreatedAt       string  `json:"created_at"`
+	UserEmail       *string `json:"user_email"`
+	SubcategoryName *string `json:"subcategory_name"`
+	CategoryID      *int    `json:"category_id"`
+	CategoryName    *string `json:"category_name"`
 }
 
 type GroupedExpense struct {

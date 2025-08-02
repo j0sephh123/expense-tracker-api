@@ -301,7 +301,23 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "SELECT e.id, e.amount, e.subcategory_id, e.user_id, e.note, e.created_at FROM expenses e"
+	query := `
+		SELECT 
+			e.id, 
+			e.amount, 
+			e.subcategory_id, 
+			e.user_id, 
+			e.note, 
+			e.created_at,
+			u.email as user_email,
+			s.name as subcategory_name,
+			c.id as category_id,
+			c.name as category_name
+		FROM expenses e
+		LEFT JOIN users u ON e.user_id = u.id
+		LEFT JOIN subcategories s ON e.subcategory_id = s.id
+		LEFT JOIN categories c ON s.category_id = c.id
+	`
 	var args []interface{}
 	var conditions []string
 
@@ -385,8 +401,23 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 		var expense Expense
 		var userID sql.NullInt64
 		var note sql.NullString
+		var userEmail sql.NullString
+		var subcategoryName sql.NullString
+		var categoryID sql.NullInt64
+		var categoryName sql.NullString
 
-		if err := rows.Scan(&expense.ID, &expense.Amount, &expense.SubcategoryID, &userID, &note, &expense.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&expense.ID,
+			&expense.Amount,
+			&expense.SubcategoryID,
+			&userID,
+			&note,
+			&expense.CreatedAt,
+			&userEmail,
+			&subcategoryName,
+			&categoryID,
+			&categoryName,
+		); err != nil {
 			logger.Error(fmt.Sprintf("Failed to scan expense row: %v", err))
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
@@ -403,6 +434,23 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 			expense.Note = &note.String
 		} else {
 			expense.Note = nil
+		}
+
+		if userEmail.Valid {
+			expense.UserEmail = &userEmail.String
+		}
+
+		if subcategoryName.Valid {
+			expense.SubcategoryName = &subcategoryName.String
+		}
+
+		if categoryID.Valid {
+			categoryIDValue := int(categoryID.Int64)
+			expense.CategoryID = &categoryIDValue
+		}
+
+		if categoryName.Valid {
+			expense.CategoryName = &categoryName.String
 		}
 
 		expenses = append(expenses, expense)
