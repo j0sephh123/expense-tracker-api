@@ -65,6 +65,17 @@ func main() {
 			} else {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/expenses/") {
+			path := strings.TrimPrefix(r.URL.Path, "/api/v1/expenses/")
+			if path != "" {
+				if r.Method == http.MethodDelete {
+					deleteExpenseHandler(w, r)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
+			} else {
+				http.Error(w, "Expense ID is required", http.StatusBadRequest)
+			}
 		} else if r.URL.Path == "/api/v1/expenses" {
 			if r.Method == http.MethodGet {
 				getExpensesHandler(w, r)

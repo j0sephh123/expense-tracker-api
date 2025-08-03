@@ -1035,3 +1035,60 @@ func debugSubcategoriesByExpenseCountHandler(w http.ResponseWriter, r *http.Requ
 	}
 	json.NewEncoder(w).Encode(subcategories)
 }
+
+func deleteExpenseHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/expenses/")
+	if path == "" {
+		http.Error(w, "Expense ID is required", http.StatusBadRequest)
+		return
+	}
+
+	expenseID, err := strconv.Atoi(path)
+	if err != nil {
+		http.Error(w, "Invalid expense ID", http.StatusBadRequest)
+		return
+	}
+
+	var existingID int
+	err = db.QueryRow("SELECT id FROM expenses WHERE id = ?", expenseID).Scan(&existingID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Expense not found", http.StatusNotFound)
+			return
+		}
+		logger.Error(fmt.Sprintf("Failed to check expense existence: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	result, err := db.Exec("DELETE FROM expenses WHERE id = ?", expenseID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to delete expense: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get rows affected: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "Expense not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Expense deleted successfully",
+		"id":      expenseID,
+	})
+}

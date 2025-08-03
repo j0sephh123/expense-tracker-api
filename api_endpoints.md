@@ -13,6 +13,7 @@ Update subcategory: PUT /api/v1/subcategories/{id}
 
 All expenses: GET /api/v1/expenses
 Create expense: POST /api/v1/expenses
+Delete expense: DELETE /api/v1/expenses/{id}
 
 - Required: amount (number)
 - Optional: subcategory_id (number), user_id (number), note (string)
