@@ -1,3 +1,8 @@
+## Categories
+
+All categories: GET /api/v1/categories
+Single category: GET /api/v1/categories/{id}
+
 ## Expenses
 
 All expenses: GET /api/v1/expenses

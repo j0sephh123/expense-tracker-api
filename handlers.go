@@ -81,6 +81,84 @@ func getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(categories)
 }
 
+func getSingleCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/categories/")
+	if path == "" {
+		http.Error(w, "Category ID is required", http.StatusBadRequest)
+		return
+	}
+
+	categoryID, err := strconv.Atoi(path)
+	if err != nil {
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := db.Query(`
+		SELECT c.id, c.name, s.id, s.name 
+		FROM categories c 
+		LEFT JOIN subcategories s ON c.id = s.category_id 
+		WHERE c.id = ?
+		ORDER BY s.id
+	`, categoryID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to query category: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var category *Category
+
+	for rows.Next() {
+		var catID int
+		var catName string
+		var subcategoryID sql.NullInt64
+		var subcategoryName sql.NullString
+
+		if err := rows.Scan(&catID, &catName, &subcategoryID, &subcategoryName); err != nil {
+			logger.Error(fmt.Sprintf("Failed to scan category row: %v", err))
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		if category == nil {
+			category = &Category{
+				ID:            catID,
+				Name:          catName,
+				Subcategories: []Subcategory{},
+			}
+		}
+
+		if subcategoryID.Valid && subcategoryName.Valid {
+			subcategory := Subcategory{
+				ID:   int(subcategoryID.Int64),
+				Name: subcategoryName.String,
+			}
+			category.Subcategories = append(category.Subcategories, subcategory)
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Error(fmt.Sprintf("Error iterating over rows: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if category == nil {
+		http.Error(w, "Category not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(category)
+}
+
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
