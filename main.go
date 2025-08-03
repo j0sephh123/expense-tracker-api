@@ -121,6 +121,10 @@ func main() {
 			}
 		} else if r.URL.Path == "/api/v1/subcategories-by-expense-count" {
 			debugSubcategoriesByExpenseCountHandler(w, r)
+		} else if r.URL.Path == "/api/v1/grouped-expenses-by-subcategory" {
+			getGroupedExpensesBySubcategoryHandler(w, r)
+		} else if r.URL.Path == "/api/v1/member-users" {
+			getMemberUsersHandler(w, r)
 		} else if strings.HasPrefix(r.URL.Path, "/api/v1/subcategories") {
 			if r.URL.Path == "/api/v1/subcategories" {
 				if r.Method == http.MethodGet {

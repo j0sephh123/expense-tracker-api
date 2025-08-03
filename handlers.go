@@ -1482,3 +1482,174 @@ func getSubcategoriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(subcategories)
 }
+
+func getGroupedExpensesBySubcategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	monthStr := r.URL.Query().Get("month")
+	yearStr := r.URL.Query().Get("year")
+	userIDStr := r.URL.Query().Get("user_id")
+
+	if monthStr == "" {
+		http.Error(w, "Month parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 0 || month > 11 {
+		http.Error(w, "Invalid month parameter. Must be 0-11", http.StatusBadRequest)
+		return
+	}
+
+	year := 2025
+	if yearStr != "" {
+		yearInt, err := strconv.Atoi(yearStr)
+		if err != nil {
+			http.Error(w, "Invalid year parameter", http.StatusBadRequest)
+			return
+		}
+		year = yearInt
+	}
+
+	startOfMonth := time.Date(year, time.Month(month+1), 1, 0, 0, 0, 0, time.UTC)
+	endOfMonth := startOfMonth.AddDate(0, 1, -1)
+
+	dateFrom := startOfMonth.Format("2006-01-02")
+	dateTo := endOfMonth.Format("2006-01-02")
+
+	query := `
+		SELECT 
+			s.name as subcategory_name,
+			c.name as category_name,
+			SUM(e.amount) as total_amount
+		FROM expenses e
+		JOIN subcategories s ON e.subcategory_id = s.id
+		JOIN categories c ON s.category_id = c.id
+		WHERE DATE(e.created_at) >= ? AND DATE(e.created_at) <= ?
+	`
+
+	var args []interface{}
+	args = append(args, dateFrom, dateTo)
+
+	if userIDStr != "" {
+		userID, err := strconv.Atoi(userIDStr)
+		if err != nil {
+			http.Error(w, "Invalid user_id parameter", http.StatusBadRequest)
+			return
+		}
+
+		if userID == 0 {
+			query += " AND e.user_id IS NULL"
+		} else {
+			query += " AND e.user_id = ?"
+			args = append(args, userID)
+		}
+	}
+
+	query += " GROUP BY s.name, c.name ORDER BY total_amount DESC"
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to query grouped expenses by subcategory: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var expenses []map[string]interface{}
+	var totalAmount float64
+
+	for rows.Next() {
+		var subcategoryName string
+		var categoryName string
+		var amount float64
+
+		if err := rows.Scan(&subcategoryName, &categoryName, &amount); err != nil {
+			logger.Error(fmt.Sprintf("Failed to scan grouped expense row: %v", err))
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		expense := map[string]interface{}{
+			"subcategory_name": subcategoryName,
+			"category_name":    categoryName,
+			"total":            amount,
+		}
+
+		expenses = append(expenses, expense)
+		totalAmount += amount
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Error(fmt.Sprintf("Error iterating over grouped rows: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"expenses": expenses,
+		"total":    fmt.Sprintf("%.2f", totalAmount),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func getMemberUsersHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rows, err := db.Query(`
+		SELECT id, email, display_name, created_at
+		FROM users 
+		WHERE role = 'MEMBER'
+		ORDER BY display_name, email
+	`)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to query member users: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var users []map[string]interface{}
+
+	for rows.Next() {
+		var id int
+		var email string
+		var displayName sql.NullString
+		var createdAt time.Time
+
+		if err := rows.Scan(&id, &email, &displayName, &createdAt); err != nil {
+			logger.Error(fmt.Sprintf("Failed to scan user row: %v", err))
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		user := map[string]interface{}{
+			"id":           id,
+			"email":        email,
+			"display_name": displayName.String,
+			"created_at":   createdAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Error(fmt.Sprintf("Error iterating over user rows: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if users == nil {
+		users = []map[string]interface{}{}
+	}
+	json.NewEncoder(w).Encode(users)
+}
