@@ -40,8 +40,15 @@ func main() {
 
 		if strings.HasPrefix(r.URL.Path, "/api/v1/categories") {
 			if r.URL.Path == "/api/v1/categories" {
-				logger.Info("Calling getCategoriesHandler")
-				getCategoriesHandler(w, r)
+				if r.Method == http.MethodGet {
+					logger.Info("Calling getCategoriesHandler")
+					getCategoriesHandler(w, r)
+				} else if r.Method == http.MethodPost {
+					logger.Info("Calling createCategoryHandler")
+					createCategoryHandler(w, r)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
 			} else if strings.HasPrefix(r.URL.Path, "/api/v1/categories/") {
 				logger.Info("Calling single category handler")
 				path := strings.TrimPrefix(r.URL.Path, "/api/v1/categories/")
@@ -57,13 +64,22 @@ func main() {
 					getCategoriesHandler(w, r)
 				}
 			}
-		} else if strings.HasPrefix(r.URL.Path, "/api/v1/subcategories/") {
-			if r.Method == http.MethodGet {
-				getSingleSubcategoryHandler(w, r)
-			} else if r.Method == http.MethodPut || r.Method == http.MethodPatch {
-				updateSubcategoryHandler(w, r)
-			} else {
-				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/subcategories") {
+			if r.URL.Path == "/api/v1/subcategories" {
+				if r.Method == http.MethodPost {
+					logger.Info("Calling createSubcategoryHandler")
+					createSubcategoryHandler(w, r)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
+			} else if strings.HasPrefix(r.URL.Path, "/api/v1/subcategories/") {
+				if r.Method == http.MethodGet {
+					getSingleSubcategoryHandler(w, r)
+				} else if r.Method == http.MethodPut || r.Method == http.MethodPatch {
+					updateSubcategoryHandler(w, r)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
 			}
 		} else if strings.HasPrefix(r.URL.Path, "/api/v1/expenses/") {
 			path := strings.TrimPrefix(r.URL.Path, "/api/v1/expenses/")

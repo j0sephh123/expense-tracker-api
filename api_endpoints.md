@@ -1,10 +1,20 @@
 ## Categories
 
 All categories: GET /api/v1/categories
+Create category: POST /api/v1/categories
+
+- Required: name (string, min 3 chars)
+- Response: { "id": number, "name": string, "message": string }
+
 Single category: GET /api/v1/categories/{id}
 Update category: PUT /api/v1/categories/{id}
 
 ## Subcategories
+
+Create subcategory: POST /api/v1/subcategories
+
+- Required: name (string, min 3 chars), category_id (number)
+- Response: { "id": number, "name": string, "category_id": number, "message": string }
 
 Single subcategory: GET /api/v1/subcategories/{id}
 Update subcategory: PUT /api/v1/subcategories/{id}

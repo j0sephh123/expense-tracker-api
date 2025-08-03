@@ -899,6 +899,137 @@ func updateSubcategoryHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func createCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var requestBody struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if len(requestBody.Name) < 3 {
+		http.Error(w, "Category name must be at least 3 characters long", http.StatusBadRequest)
+		return
+	}
+
+	var existingID int
+	err := db.QueryRow("SELECT id FROM categories WHERE name = ?", requestBody.Name).Scan(&existingID)
+	if err == nil {
+		http.Error(w, "Category name already exists", http.StatusConflict)
+		return
+	} else if err != sql.ErrNoRows {
+		logger.Error(fmt.Sprintf("Failed to check category name uniqueness: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	result, err := db.Exec("INSERT INTO categories (name) VALUES (?)", requestBody.Name)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to create category: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	categoryID, err := result.LastInsertId()
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get last insert ID: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":      categoryID,
+		"name":    requestBody.Name,
+		"message": "Category created successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(response)
+}
+
+func createSubcategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var requestBody struct {
+		Name       string `json:"name"`
+		CategoryID int    `json:"category_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if len(requestBody.Name) < 3 {
+		http.Error(w, "Subcategory name must be at least 3 characters long", http.StatusBadRequest)
+		return
+	}
+
+	if requestBody.CategoryID <= 0 {
+		http.Error(w, "Valid category_id is required", http.StatusBadRequest)
+		return
+	}
+
+	var categoryExists int
+	err := db.QueryRow("SELECT id FROM categories WHERE id = ?", requestBody.CategoryID).Scan(&categoryExists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Category not found", http.StatusNotFound)
+			return
+		}
+		logger.Error(fmt.Sprintf("Failed to check category existence: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	var existingID int
+	err = db.QueryRow("SELECT id FROM subcategories WHERE name = ? AND category_id = ?", requestBody.Name, requestBody.CategoryID).Scan(&existingID)
+	if err == nil {
+		http.Error(w, "Subcategory name already exists in this category", http.StatusConflict)
+		return
+	} else if err != sql.ErrNoRows {
+		logger.Error(fmt.Sprintf("Failed to check subcategory name uniqueness: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	result, err := db.Exec("INSERT INTO subcategories (name, category_id) VALUES (?, ?)", requestBody.Name, requestBody.CategoryID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to create subcategory: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	subcategoryID, err := result.LastInsertId()
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get last insert ID: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":          subcategoryID,
+		"name":        requestBody.Name,
+		"category_id": requestBody.CategoryID,
+		"message":     "Subcategory created successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(response)
+}
+
 type CreateExpenseRequest struct {
 	Amount        float64 `json:"amount"`
 	SubcategoryID *int    `json:"subcategory_id,omitempty"`
