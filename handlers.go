@@ -777,6 +777,57 @@ func updateCategoryHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func getSingleSubcategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/subcategories/")
+
+	if path == "" {
+		http.Error(w, "Subcategory ID is required", http.StatusBadRequest)
+		return
+	}
+
+	subcategoryID, err := strconv.Atoi(path)
+	if err != nil {
+		http.Error(w, "Invalid subcategory ID", http.StatusBadRequest)
+		return
+	}
+
+	var subcategory Subcategory
+	var categoryID int
+	var categoryName string
+
+	err = db.QueryRow(`
+		SELECT s.id, s.name, s.category_id, c.name as category_name
+		FROM subcategories s
+		JOIN categories c ON s.category_id = c.id
+		WHERE s.id = ?
+	`, subcategoryID).Scan(&subcategory.ID, &subcategory.Name, &categoryID, &categoryName)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Subcategory not found", http.StatusNotFound)
+			return
+		}
+		logger.Error(fmt.Sprintf("Failed to query subcategory: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":            subcategory.ID,
+		"name":          subcategory.Name,
+		"category_id":   categoryID,
+		"category_name": categoryName,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func updateSubcategoryHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut && r.Method != http.MethodPatch {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

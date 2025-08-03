@@ -6,6 +6,7 @@ Update category: PUT /api/v1/categories/{id}
 
 ## Subcategories
 
+Single subcategory: GET /api/v1/subcategories/{id}
 Update subcategory: PUT /api/v1/subcategories/{id}
 
 ## Expenses

@@ -58,7 +58,9 @@ func main() {
 				}
 			}
 		} else if strings.HasPrefix(r.URL.Path, "/api/v1/subcategories/") {
-			if r.Method == http.MethodPut || r.Method == http.MethodPatch {
+			if r.Method == http.MethodGet {
+				getSingleSubcategoryHandler(w, r)
+			} else if r.Method == http.MethodPut || r.Method == http.MethodPatch {
 				updateSubcategoryHandler(w, r)
 			} else {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
