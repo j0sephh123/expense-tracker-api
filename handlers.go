@@ -898,3 +898,75 @@ func updateSubcategoryHandler(w http.ResponseWriter, r *http.Request) {
 		"name":    requestBody.Name,
 	})
 }
+
+type CreateExpenseRequest struct {
+	Amount        float64 `json:"amount"`
+	SubcategoryID *int    `json:"subcategory_id,omitempty"`
+	UserID        *int    `json:"user_id,omitempty"`
+	Note          *string `json:"note,omitempty"`
+}
+
+func createExpenseHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CreateExpenseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Error(fmt.Sprintf("Failed to decode request body: %v", err))
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Amount <= 0 {
+		http.Error(w, "Amount must be greater than 0", http.StatusBadRequest)
+		return
+	}
+
+	var subcategoryID sql.NullInt64
+	if req.SubcategoryID != nil {
+		subcategoryID.Int64 = int64(*req.SubcategoryID)
+		subcategoryID.Valid = true
+	}
+
+	var userID sql.NullInt64
+	if req.UserID != nil {
+		userID.Int64 = int64(*req.UserID)
+		userID.Valid = true
+	}
+
+	var note sql.NullString
+	if req.Note != nil {
+		note.String = *req.Note
+		note.Valid = true
+	}
+
+	result, err := db.Exec(`
+		INSERT INTO expenses (amount, subcategory_id, user_id, note, created_at)
+		VALUES (?, ?, ?, ?, NOW())
+	`, req.Amount, subcategoryID, userID, note)
+
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to create expense: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	expenseID, err := result.LastInsertId()
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get last insert ID: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":      expenseID,
+		"amount":  req.Amount,
+		"message": "Expense created successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(response)
+}

@@ -66,7 +66,13 @@ func main() {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
 		} else if r.URL.Path == "/api/v1/expenses" {
-			getExpensesHandler(w, r)
+			if r.Method == http.MethodGet {
+				getExpensesHandler(w, r)
+			} else if r.Method == http.MethodPost {
+				createExpenseHandler(w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
 		} else if r.URL.Path == "/api/v1/health" {
 			healthCheckHandler(w, r)
 		} else {

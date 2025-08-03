@@ -12,12 +12,16 @@ Update subcategory: PUT /api/v1/subcategories/{id}
 ## Expenses
 
 All expenses: GET /api/v1/expenses
-User 1 expenses: GET /api/v1/expenses?user_id=1
-User 2 expenses: GET /api/v1/expenses?user_id=2
-NULL user expenses: GET /api/v1/expenses?user_id=0
-Total for all: GET /api/v1/expenses?aggregates_only=true
-Total for user 1: GET /api/v1/expenses?user_id=1&aggregates_only=true
-Total for NULL users: GET /api/v1/expenses?user_id=0&aggregates_only=true
+Create expense: POST /api/v1/expenses
+
+- Required: amount (number)
+- Optional: subcategory_id (number), user_id (number), note (string)
+  User 1 expenses: GET /api/v1/expenses?user_id=1
+  User 2 expenses: GET /api/v1/expenses?user_id=2
+  NULL user expenses: GET /api/v1/expenses?user_id=0
+  Total for all: GET /api/v1/expenses?aggregates_only=true
+  Total for user 1: GET /api/v1/expenses?user_id=1&aggregates_only=true
+  Total for NULL users: GET /api/v1/expenses?user_id=0&aggregates_only=true
 
 GET /api/v1/expenses?category_id=1 - expenses from category 1
 GET /api/v1/expenses?category_id=1,2 - expenses from categories 1 or 2
