@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -19,6 +20,9 @@ func main() {
 
 	host := os.Getenv("HOST")
 	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8082"
+	}
 
 	logger.Info("Starting expense tracker API server")
 
@@ -29,18 +33,53 @@ func main() {
 
 	logger.Info(fmt.Sprintf("Server running at %s:%s", host, port))
 
-	http.HandleFunc("/api/v1/categories", getCategoriesHandler)
-	http.HandleFunc("/api/v1/categories/", getSingleCategoryHandler)
-	http.HandleFunc("/api/v1/expenses", getExpensesHandler)
-	http.HandleFunc("/api/v1/health", healthCheckHandler)
+	mux := http.NewServeMux()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
+		logger.Info(fmt.Sprintf("API route called: %s %s", r.Method, r.URL.Path))
+
+		if strings.HasPrefix(r.URL.Path, "/api/v1/categories") {
+			if r.URL.Path == "/api/v1/categories" {
+				logger.Info("Calling getCategoriesHandler")
+				getCategoriesHandler(w, r)
+			} else if strings.HasPrefix(r.URL.Path, "/api/v1/categories/") {
+				logger.Info("Calling single category handler")
+				path := strings.TrimPrefix(r.URL.Path, "/api/v1/categories/")
+				if path != "" {
+					if r.Method == http.MethodPut || r.Method == http.MethodPatch {
+						updateCategoryHandler(w, r)
+					} else if r.Method == http.MethodGet {
+						getSingleCategoryHandler(w, r)
+					} else {
+						http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+					}
+				} else {
+					getCategoriesHandler(w, r)
+				}
+			}
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/subcategories/") {
+			if r.Method == http.MethodPut || r.Method == http.MethodPatch {
+				updateSubcategoryHandler(w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		} else if r.URL.Path == "/api/v1/expenses" {
+			getExpensesHandler(w, r)
+		} else if r.URL.Path == "/api/v1/health" {
+			healthCheckHandler(w, r)
+		} else {
+			logger.Info("No matching route found")
+			http.Error(w, "Not found", http.StatusNotFound)
+		}
+	})
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		logger.Info(fmt.Sprintf("Request received: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr))
 		fmt.Fprintln(w, "API is running. Use /api/v1/ for versioned endpoints.")
 	})
 
 	logger.Info("Server started successfully")
-	if err := http.ListenAndServe(fmt.Sprintf(":%s", port), nil); err != nil {
+	if err := http.ListenAndServe(fmt.Sprintf(":%s", port), mux); err != nil {
 		logger.Error(fmt.Sprintf("Server failed to start: %v", err))
 		os.Exit(1)
 	}

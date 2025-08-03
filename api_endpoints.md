@@ -2,6 +2,11 @@
 
 All categories: GET /api/v1/categories
 Single category: GET /api/v1/categories/{id}
+Update category: PUT /api/v1/categories/{id}
+
+## Subcategories
+
+Update subcategory: PUT /api/v1/subcategories/{id}
 
 ## Expenses
 

@@ -88,6 +88,7 @@ func getSingleCategoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/categories/")
+
 	if path == "" {
 		http.Error(w, "Category ID is required", http.StatusBadRequest)
 		return
@@ -703,4 +704,146 @@ func handleGroupedExpenses(w http.ResponseWriter, userIDStr, categoryIDStr, subc
 		groupedExpenses = []map[string]interface{}{}
 	}
 	json.NewEncoder(w).Encode(groupedExpenses)
+}
+
+func updateCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut && r.Method != http.MethodPatch {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/categories/")
+	if path == "" {
+		http.Error(w, "Category ID is required", http.StatusBadRequest)
+		return
+	}
+
+	categoryID, err := strconv.Atoi(path)
+	if err != nil {
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	var requestBody struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if requestBody.Name == "" {
+		http.Error(w, "Category name is required", http.StatusBadRequest)
+		return
+	}
+
+	var existingID int
+	err = db.QueryRow("SELECT id FROM categories WHERE name = ? AND id != ?", requestBody.Name, categoryID).Scan(&existingID)
+	if err == nil {
+		http.Error(w, "Category name already exists", http.StatusConflict)
+		return
+	} else if err != sql.ErrNoRows {
+		logger.Error(fmt.Sprintf("Failed to check category name uniqueness: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	result, err := db.Exec("UPDATE categories SET name = ? WHERE id = ?", requestBody.Name, categoryID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to update category: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get rows affected: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "Category not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Category updated successfully",
+		"id":      categoryID,
+		"name":    requestBody.Name,
+	})
+}
+
+func updateSubcategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut && r.Method != http.MethodPatch {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/subcategories/")
+	if path == "" {
+		http.Error(w, "Subcategory ID is required", http.StatusBadRequest)
+		return
+	}
+
+	subcategoryID, err := strconv.Atoi(path)
+	if err != nil {
+		http.Error(w, "Invalid subcategory ID", http.StatusBadRequest)
+		return
+	}
+
+	var requestBody struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if requestBody.Name == "" {
+		http.Error(w, "Subcategory name is required", http.StatusBadRequest)
+		return
+	}
+
+	var existingID int
+	err = db.QueryRow("SELECT id FROM subcategories WHERE name = ? AND category_id = (SELECT category_id FROM subcategories WHERE id = ?) AND id != ?", requestBody.Name, subcategoryID, subcategoryID).Scan(&existingID)
+	if err == nil {
+		http.Error(w, "Subcategory name already exists in this category", http.StatusConflict)
+		return
+	} else if err != sql.ErrNoRows {
+		logger.Error(fmt.Sprintf("Failed to check subcategory name uniqueness: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	result, err := db.Exec("UPDATE subcategories SET name = ? WHERE id = ?", requestBody.Name, subcategoryID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to update subcategory: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get rows affected: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "Subcategory not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Subcategory updated successfully",
+		"id":      subcategoryID,
+		"name":    requestBody.Name,
+	})
 }
