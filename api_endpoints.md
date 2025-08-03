@@ -50,3 +50,7 @@ GET /api/v1/expenses?group_by=subcategory - expenses grouped by subcategory
 GET /api/v1/expenses?group_by=user - expenses grouped by user
 GET /api/v1/expenses?group_by=category&order_dir=asc - categories ordered by total (lowest first)
 GET /api/v1/expenses?group_by=category&user_id=1 - user 1
+
+## Debug Endpoints
+
+Subcategories by expense count: GET /api/v1/subcategories-by-expense-count

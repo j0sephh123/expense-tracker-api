@@ -73,6 +73,8 @@ func main() {
 			} else {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
+		} else if r.URL.Path == "/api/v1/subcategories-by-expense-count" {
+			debugSubcategoriesByExpenseCountHandler(w, r)
 		} else if r.URL.Path == "/api/v1/health" {
 			healthCheckHandler(w, r)
 		} else {

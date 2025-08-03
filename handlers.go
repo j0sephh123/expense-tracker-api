@@ -970,3 +970,68 @@ func createExpenseHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(response)
 }
+
+type SubcategoryExpenseCount struct {
+	SubcategoryID   int    `json:"subcategory_id"`
+	SubcategoryName string `json:"subcategory_name"`
+	CategoryID      int    `json:"category_id"`
+	CategoryName    string `json:"category_name"`
+	ExpenseCount    int    `json:"expense_count"`
+}
+
+func debugSubcategoriesByExpenseCountHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rows, err := db.Query(`
+		SELECT 
+			s.id as subcategory_id,
+			s.name as subcategory_name,
+			c.id as category_id,
+			c.name as category_name,
+			COUNT(e.id) as expense_count
+		FROM subcategories s
+		LEFT JOIN categories c ON s.category_id = c.id
+		LEFT JOIN expenses e ON s.id = e.subcategory_id
+		GROUP BY s.id, s.name, c.id, c.name
+		ORDER BY expense_count DESC
+	`)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to query subcategories by expense count: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var subcategories []SubcategoryExpenseCount
+
+	for rows.Next() {
+		var subcategory SubcategoryExpenseCount
+		if err := rows.Scan(
+			&subcategory.SubcategoryID,
+			&subcategory.SubcategoryName,
+			&subcategory.CategoryID,
+			&subcategory.CategoryName,
+			&subcategory.ExpenseCount,
+		); err != nil {
+			logger.Error(fmt.Sprintf("Failed to scan subcategory row: %v", err))
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		subcategories = append(subcategories, subcategory)
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Error(fmt.Sprintf("Error iterating over rows: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if subcategories == nil {
+		subcategories = []SubcategoryExpenseCount{}
+	}
+	json.NewEncoder(w).Encode(subcategories)
+}
