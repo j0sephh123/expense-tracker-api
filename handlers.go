@@ -1411,9 +1411,16 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token, err := generateToken(user.ID, user.Email)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to generate token: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	response := LoginResponse{
 		User:  *user,
-		Token: "dummy-token", // In a real implementation, you would generate a JWT token here
+		Token: token,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

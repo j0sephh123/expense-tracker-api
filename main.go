@@ -25,12 +25,27 @@ func requireAuth(w http.ResponseWriter, r *http.Request) bool {
 
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 
-	if token == "" || token == "dummy-token" {
-		return true
+	if token == "" {
+		http.Error(w, "Token is required", http.StatusUnauthorized)
+		return false
 	}
 
-	http.Error(w, "Invalid token", http.StatusUnauthorized)
-	return false
+	claims, err := validateToken(token)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Token validation failed: %v", err))
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return false
+	}
+
+	// Add user info to request context for use in handlers
+	userID, _ := claims["user_id"].(float64)
+	email, _ := claims["email"].(string)
+
+	// Store user info in request context (you can extend this later)
+	_ = userID
+	_ = email
+
+	return true
 }
 
 func main() {

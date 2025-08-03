@@ -80,6 +80,19 @@ type LoginResponse struct {
 - Returns error if passwords don't match
 - Handles bcrypt-specific errors
 
+**generateToken** (`database.go`):
+
+- Creates JWT tokens with user ID and email
+- Uses HS256 signing method
+- Tokens expire in 7 days
+- Uses JWT_SECRET environment variable (defaults to development key)
+
+**validateToken** (`database.go`):
+
+- Validates JWT tokens and extracts claims
+- Checks token signature and expiration
+- Returns user claims on success
+
 ### 4. Login Handler
 
 **loginHandler** (`handlers.go`):
@@ -97,10 +110,10 @@ All API routes except `/api/v1/login` and `/api/v1/health` now require authentic
 
 ### Authentication Header
 
-Protected routes require an `Authorization` header:
+Protected routes require an `Authorization` header with a valid JWT token:
 
 ```
-Authorization: Bearer dummy-token
+Authorization: Bearer <jwt-token>
 ```
 
 ### Protected Routes
@@ -142,7 +155,7 @@ Authorization: Bearer dummy-token
     "display_name": "John Doe",
     "created_at": "2024-01-01T00:00:00Z"
   },
-  "token": "dummy-token"
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
 
