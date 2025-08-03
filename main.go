@@ -119,9 +119,14 @@ func main() {
 					getCategoriesHandler(w, r)
 				}
 			}
+		} else if r.URL.Path == "/api/v1/subcategories-by-expense-count" {
+			debugSubcategoriesByExpenseCountHandler(w, r)
 		} else if strings.HasPrefix(r.URL.Path, "/api/v1/subcategories") {
 			if r.URL.Path == "/api/v1/subcategories" {
-				if r.Method == http.MethodPost {
+				if r.Method == http.MethodGet {
+					logger.Info("Calling getSubcategoriesHandler")
+					getSubcategoriesHandler(w, r)
+				} else if r.Method == http.MethodPost {
 					logger.Info("Calling createSubcategoryHandler")
 					createSubcategoryHandler(w, r)
 				} else {
@@ -157,8 +162,6 @@ func main() {
 			} else {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
-		} else if r.URL.Path == "/api/v1/subcategories-by-expense-count" {
-			debugSubcategoriesByExpenseCountHandler(w, r)
 		} else if r.URL.Path == "/api/v1/health" {
 			healthCheckHandler(w, r)
 		} else {

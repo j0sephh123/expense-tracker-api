@@ -1427,3 +1427,58 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
 }
+
+func getSubcategoriesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rows, err := db.Query(`
+		SELECT s.id, s.name, s.category_id, c.name as category_name
+		FROM subcategories s
+		JOIN categories c ON s.category_id = c.id
+		ORDER BY c.name, s.name
+	`)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to query subcategories: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var subcategories []map[string]interface{}
+
+	for rows.Next() {
+		var id int
+		var name string
+		var categoryID int
+		var categoryName string
+
+		if err := rows.Scan(&id, &name, &categoryID, &categoryName); err != nil {
+			logger.Error(fmt.Sprintf("Failed to scan subcategory row: %v", err))
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		subcategory := map[string]interface{}{
+			"id":            id,
+			"name":          name,
+			"category_id":   categoryID,
+			"category_name": categoryName,
+		}
+		subcategories = append(subcategories, subcategory)
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Error(fmt.Sprintf("Error iterating over rows: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if subcategories == nil {
+		subcategories = []map[string]interface{}{}
+	}
+	json.NewEncoder(w).Encode(subcategories)
+}
