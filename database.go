@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	_ "github.com/go-sql-driver/mysql"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Subcategory struct {
@@ -38,6 +39,25 @@ type GroupedExpense struct {
 	Expenses  []Expense `json:"expenses"`
 }
 
+type User struct {
+	ID          int     `json:"id"`
+	UID         *string `json:"uid"`
+	Email       string  `json:"email"`
+	DisplayName *string `json:"display_name"`
+	CreatedAt   string  `json:"created_at"`
+	Password    *string `json:"-"` // Exclude from JSON responses
+}
+
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type LoginResponse struct {
+	User  User   `json:"user"`
+	Token string `json:"token"`
+}
+
 var db *sql.DB
 
 func initDB() error {
@@ -54,4 +74,37 @@ func initDB() error {
 
 	logger.Info("Database connection established successfully")
 	return nil
+}
+
+func getUserByEmail(email string) (*User, error) {
+	var user User
+	var password sql.NullString
+	var uid sql.NullString
+	var displayName sql.NullString
+
+	query := `SELECT id, uid, email, display_name, created_at, password FROM users WHERE email = ?`
+	err := db.QueryRow(query, email).Scan(&user.ID, &uid, &user.Email, &displayName, &user.CreatedAt, &password)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to query user: %v", err)
+	}
+
+	if uid.Valid {
+		user.UID = &uid.String
+	}
+	if displayName.Valid {
+		user.DisplayName = &displayName.String
+	}
+	if password.Valid {
+		user.Password = &password.String
+	}
+
+	return &user, nil
+}
+
+func verifyPassword(plainPassword, hashedPassword string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
 }

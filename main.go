@@ -11,6 +11,28 @@ import (
 
 var logger *Logger
 
+func requireAuth(w http.ResponseWriter, r *http.Request) bool {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header required", http.StatusUnauthorized)
+		return false
+	}
+
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+		return false
+	}
+
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+
+	if token == "" || token == "dummy-token" {
+		return true
+	}
+
+	http.Error(w, "Invalid token", http.StatusUnauthorized)
+	return false
+}
+
 func main() {
 	logger = NewLogger()
 
@@ -37,6 +59,20 @@ func main() {
 
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
 		logger.Info(fmt.Sprintf("API route called: %s %s", r.Method, r.URL.Path))
+
+		if r.URL.Path == "/api/v1/login" {
+			loginHandler(w, r)
+			return
+		}
+
+		if r.URL.Path == "/api/v1/health" {
+			healthCheckHandler(w, r)
+			return
+		}
+
+		if !requireAuth(w, r) {
+			return
+		}
 
 		if strings.HasPrefix(r.URL.Path, "/api/v1/categories") {
 			if r.URL.Path == "/api/v1/categories" {

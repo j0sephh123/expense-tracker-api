@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
@@ -1362,4 +1364,59 @@ func deleteSubcategoryHandler(w http.ResponseWriter, r *http.Request) {
 		"message": "Subcategory deleted successfully",
 		"id":      subcategoryID,
 	})
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var loginReq LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
+		logger.Error(fmt.Sprintf("Failed to decode login request: %v", err))
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if loginReq.Email == "" || loginReq.Password == "" {
+		http.Error(w, "Email and password are required", http.StatusBadRequest)
+		return
+	}
+
+	user, err := getUserByEmail(loginReq.Email)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get user by email: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if user == nil {
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	if user.Password == nil {
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	if err := verifyPassword(loginReq.Password, *user.Password); err != nil {
+		if err == bcrypt.ErrMismatchedHashAndPassword {
+			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			return
+		}
+		logger.Error(fmt.Sprintf("Failed to verify password: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	response := LoginResponse{
+		User:  *user,
+		Token: "dummy-token", // In a real implementation, you would generate a JWT token here
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }
