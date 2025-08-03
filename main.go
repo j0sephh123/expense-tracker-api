@@ -57,6 +57,8 @@ func main() {
 						updateCategoryHandler(w, r)
 					} else if r.Method == http.MethodGet {
 						getSingleCategoryHandler(w, r)
+					} else if r.Method == http.MethodDelete {
+						deleteCategoryHandler(w, r)
 					} else {
 						http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 					}
@@ -77,6 +79,8 @@ func main() {
 					getSingleSubcategoryHandler(w, r)
 				} else if r.Method == http.MethodPut || r.Method == http.MethodPatch {
 					updateSubcategoryHandler(w, r)
+				} else if r.Method == http.MethodDelete {
+					deleteSubcategoryHandler(w, r)
 				} else {
 					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				}

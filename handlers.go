@@ -1223,3 +1223,143 @@ func deleteExpenseHandler(w http.ResponseWriter, r *http.Request) {
 		"id":      expenseID,
 	})
 }
+
+func deleteCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/categories/")
+	if path == "" {
+		http.Error(w, "Category ID is required", http.StatusBadRequest)
+		return
+	}
+
+	categoryID, err := strconv.Atoi(path)
+	if err != nil {
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	var existingID int
+	err = db.QueryRow("SELECT id FROM categories WHERE id = ?", categoryID).Scan(&existingID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Category not found", http.StatusNotFound)
+			return
+		}
+		logger.Error(fmt.Sprintf("Failed to check category existence: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	var subcategoryCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM subcategories WHERE category_id = ?", categoryID).Scan(&subcategoryCount)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to check subcategories count: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if subcategoryCount > 0 {
+		http.Error(w, "Cannot delete category: it has related subcategories", http.StatusConflict)
+		return
+	}
+
+	result, err := db.Exec("DELETE FROM categories WHERE id = ?", categoryID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to delete category: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get rows affected: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "Category not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Category deleted successfully",
+		"id":      categoryID,
+	})
+}
+
+func deleteSubcategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/subcategories/")
+	if path == "" {
+		http.Error(w, "Subcategory ID is required", http.StatusBadRequest)
+		return
+	}
+
+	subcategoryID, err := strconv.Atoi(path)
+	if err != nil {
+		http.Error(w, "Invalid subcategory ID", http.StatusBadRequest)
+		return
+	}
+
+	var existingID int
+	err = db.QueryRow("SELECT id FROM subcategories WHERE id = ?", subcategoryID).Scan(&existingID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Subcategory not found", http.StatusNotFound)
+			return
+		}
+		logger.Error(fmt.Sprintf("Failed to check subcategory existence: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	var expenseCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM expenses WHERE subcategory_id = ?", subcategoryID).Scan(&expenseCount)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to check expenses count: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if expenseCount > 0 {
+		http.Error(w, "Cannot delete subcategory: it has related expenses", http.StatusConflict)
+		return
+	}
+
+	result, err := db.Exec("DELETE FROM subcategories WHERE id = ?", subcategoryID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to delete subcategory: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get rows affected: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "Subcategory not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Subcategory deleted successfully",
+		"id":      subcategoryID,
+	})
+}

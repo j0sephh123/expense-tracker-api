@@ -8,6 +8,10 @@ Create category: POST /api/v1/categories
 
 Single category: GET /api/v1/categories/{id}
 Update category: PUT /api/v1/categories/{id}
+Delete category: DELETE /api/v1/categories/{id}
+
+- Cannot delete if category has related subcategories
+- Response: { "message": string, "id": number }
 
 ## Subcategories
 
@@ -18,6 +22,10 @@ Create subcategory: POST /api/v1/subcategories
 
 Single subcategory: GET /api/v1/subcategories/{id}
 Update subcategory: PUT /api/v1/subcategories/{id}
+Delete subcategory: DELETE /api/v1/subcategories/{id}
+
+- Cannot delete if subcategory has related expenses
+- Response: { "message": string, "id": number }
 
 ## Expenses
 
