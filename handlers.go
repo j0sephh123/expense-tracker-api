@@ -314,13 +314,13 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 			logger.Info(fmt.Sprintf("Parsed category IDs: %v", categoryIDs))
 
 			if len(categoryIDs) > 0 {
-				query += " JOIN subcategories s ON e.subcategory_id = s.id"
+				query += " JOIN subcategories sc ON e.subcategory_id = sc.id"
 				placeholders := make([]string, len(categoryIDs))
 				for i := range categoryIDs {
 					placeholders[i] = "?"
 					args = append(args, categoryIDs[i])
 				}
-				condition := fmt.Sprintf("s.category_id IN (%s)", strings.Join(placeholders, ","))
+				condition := fmt.Sprintf("sc.category_id IN (%s)", strings.Join(placeholders, ","))
 				conditions = append(conditions, condition)
 				logger.Info(fmt.Sprintf("Added category condition: %s", condition))
 			}
@@ -423,13 +423,13 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(categoryIDs) > 0 {
-			query += " JOIN subcategories s ON e.subcategory_id = s.id"
+			query += " JOIN subcategories sc ON e.subcategory_id = sc.id"
 			placeholders := make([]string, len(categoryIDs))
 			for i := range categoryIDs {
 				placeholders[i] = "?"
 				args = append(args, categoryIDs[i])
 			}
-			conditions = append(conditions, fmt.Sprintf("s.category_id IN (%s)", strings.Join(placeholders, ",")))
+			conditions = append(conditions, fmt.Sprintf("sc.category_id IN (%s)", strings.Join(placeholders, ",")))
 		}
 	}
 
