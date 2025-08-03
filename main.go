@@ -40,10 +40,12 @@ func requireAuth(w http.ResponseWriter, r *http.Request) bool {
 	// Add user info to request context for use in handlers
 	userID, _ := claims["user_id"].(float64)
 	email, _ := claims["email"].(string)
+	role, _ := claims["role"].(string)
 
 	// Store user info in request context (you can extend this later)
 	_ = userID
 	_ = email
+	_ = role
 
 	return true
 }

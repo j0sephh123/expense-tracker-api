@@ -26,10 +26,11 @@ CREATE TABLE `users` (
   `display_name` varchar(255) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `password` varchar(255) DEFAULT NULL,
+  `role` enum('MEMBER','ADMIN') NOT NULL DEFAULT 'MEMBER',
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `uid` (`uid`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE subcategories (
   id int NOT NULL AUTO_INCREMENT,
   category_id int NOT NULL,

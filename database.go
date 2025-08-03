@@ -49,6 +49,7 @@ type User struct {
 	DisplayName *string `json:"display_name"`
 	CreatedAt   string  `json:"created_at"`
 	Password    *string `json:"-"` // Exclude from JSON responses
+	Role        string  `json:"role"`
 }
 
 type LoginRequest struct {
@@ -85,8 +86,8 @@ func getUserByEmail(email string) (*User, error) {
 	var uid sql.NullString
 	var displayName sql.NullString
 
-	query := `SELECT id, uid, email, display_name, created_at, password FROM users WHERE email = ?`
-	err := db.QueryRow(query, email).Scan(&user.ID, &uid, &user.Email, &displayName, &user.CreatedAt, &password)
+	query := `SELECT id, uid, email, display_name, created_at, password, role FROM users WHERE email = ?`
+	err := db.QueryRow(query, email).Scan(&user.ID, &uid, &user.Email, &displayName, &user.CreatedAt, &password, &user.Role)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -112,7 +113,7 @@ func verifyPassword(plainPassword, hashedPassword string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
 }
 
-func generateToken(userID int, email string) (string, error) {
+func generateToken(userID int, email string, role string) (string, error) {
 	secretKey := os.Getenv("JWT_SECRET")
 	if secretKey == "" {
 		secretKey = "your-secret-key-change-in-production"
@@ -121,6 +122,7 @@ func generateToken(userID int, email string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
 		"email":   email,
+		"role":    role,
 		"exp":     time.Now().Add(time.Hour * 24 * 7).Unix(), // 7 days
 		"iat":     time.Now().Unix(),
 	}
