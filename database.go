@@ -66,7 +66,14 @@ var db *sql.DB
 
 func initDB() error {
 	var err error
-	dsn := "root:your_password@tcp(localhost:3306)/expenses?parseTime=true"
+	user := os.Getenv("MYSQL_USER")
+	password := os.Getenv("MYSQL_PASSWORD")
+	host := os.Getenv("MYSQL_HOST")
+	port := os.Getenv("MYSQL_PORT")
+	database := os.Getenv("MYSQL_DATABASE")
+	
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, password, host, port, database)
+	
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %v", err)
