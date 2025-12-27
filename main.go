@@ -125,6 +125,14 @@ func main() {
 			getGroupedExpensesBySubcategoryHandler(w, r)
 		} else if r.URL.Path == "/api/v1/member-users" {
 			getMemberUsersHandler(w, r)
+		} else if r.URL.Path == "/api/v1/user/preferences" {
+			if r.Method == http.MethodGet {
+				getUserPreferencesHandler(w, r)
+			} else if r.Method == http.MethodPut || r.Method == http.MethodPatch {
+				updateUserPreferencesHandler(w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
 		} else if strings.HasPrefix(r.URL.Path, "/api/v1/subcategories") {
 			if r.URL.Path == "/api/v1/subcategories" {
 				if r.Method == http.MethodGet {

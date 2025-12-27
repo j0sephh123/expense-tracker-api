@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -29,6 +30,7 @@ type Expense struct {
 	UserID          *int    `json:"user_id"`
 	Note            *string `json:"note"`
 	CreatedAt       string  `json:"created_at"`
+	IsEuro          bool    `json:"is_euro"`
 	UserEmail       *string `json:"user_email"`
 	SubcategoryName *string `json:"subcategory_name"`
 	CategoryID      *int    `json:"category_id"`
@@ -43,13 +45,14 @@ type GroupedExpense struct {
 }
 
 type User struct {
-	ID          int     `json:"id"`
-	UID         *string `json:"uid"`
-	Email       string  `json:"email"`
-	DisplayName *string `json:"display_name"`
-	CreatedAt   string  `json:"created_at"`
-	Password    *string `json:"-"` // Exclude from JSON responses
-	Role        string  `json:"role"`
+	ID              int     `json:"id"`
+	UID             *string `json:"uid"`
+	Email           string  `json:"email"`
+	DisplayName     *string `json:"display_name"`
+	CreatedAt       string  `json:"created_at"`
+	Password        *string `json:"-"` // Exclude from JSON responses
+	Role            string  `json:"role"`
+	DefaultCurrency string  `json:"default_currency"`
 }
 
 type LoginRequest struct {
@@ -84,7 +87,29 @@ func initDB() error {
 	}
 
 	logger.Info("Database connection established successfully")
+
+	// Run pending migrations
+	if err = runMigrations(db); err != nil {
+		return fmt.Errorf("failed to run migrations: %v", err)
+	}
+
 	return nil
+}
+
+func getAuthenticatedUserEmail(authHeader string) (string, error) {
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		return "", fmt.Errorf("invalid authorization header")
+	}
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	claims, err := validateToken(token)
+	if err != nil {
+		return "", err
+	}
+	email, ok := claims["email"].(string)
+	if !ok {
+		return "", fmt.Errorf("email not found in token")
+	}
+	return email, nil
 }
 
 func getUserByEmail(email string) (*User, error) {
@@ -93,8 +118,8 @@ func getUserByEmail(email string) (*User, error) {
 	var uid sql.NullString
 	var displayName sql.NullString
 
-	query := `SELECT id, uid, email, display_name, created_at, password, role FROM users WHERE email = ?`
-	err := db.QueryRow(query, email).Scan(&user.ID, &uid, &user.Email, &displayName, &user.CreatedAt, &password, &user.Role)
+	query := `SELECT id, uid, email, display_name, created_at, password, role, default_currency FROM users WHERE email = ?`
+	err := db.QueryRow(query, email).Scan(&user.ID, &uid, &user.Email, &displayName, &user.CreatedAt, &password, &user.Role, &user.DefaultCurrency)
 
 	if err != nil {
 		if err == sql.ErrNoRows {

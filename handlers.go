@@ -280,12 +280,30 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if groupByStr != "" {
-		handleGroupedExpenses(w, userIDStr, categoryIDStr, subcategoryIDStr, dateFromStr, dateToStr, groupByStr, orderBy, orderDir)
+		handleGroupedExpenses(w, r, userIDStr, categoryIDStr, subcategoryIDStr, dateFromStr, dateToStr, groupByStr, orderBy, orderDir)
 		return
 	}
 
 	if aggregatesOnly {
-		query := "SELECT SUM(e.amount) as total_amount FROM expenses e"
+		// Get authenticated user's default currency
+		userCurrency := "BGN" // default fallback
+		authEmail, err := getAuthenticatedUserEmail(r.Header.Get("Authorization"))
+		if err == nil {
+			authUser, err := getUserByEmail(authEmail)
+			if err == nil && authUser != nil {
+				userCurrency = authUser.DefaultCurrency
+			}
+		}
+
+		// Build query with currency conversion
+		var amountExpr string
+		if userCurrency == "EUR" {
+			amountExpr = fmt.Sprintf("CASE WHEN e.is_euro = 1 THEN e.amount ELSE e.amount / %f END", EURtoBGN)
+		} else {
+			amountExpr = fmt.Sprintf("CASE WHEN e.is_euro = 0 THEN e.amount ELSE e.amount * %f END", EURtoBGN)
+		}
+
+		query := fmt.Sprintf("SELECT SUM(%s) as total_amount FROM expenses e", amountExpr)
 		var args []interface{}
 		var conditions []string
 
@@ -366,15 +384,16 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var totalAmount sql.NullFloat64
-		err := db.QueryRow(query, args...).Scan(&totalAmount)
-		if err != nil {
-			logger.Error(fmt.Sprintf("Failed to query expense total: %v", err))
+		queryErr := db.QueryRow(query, args...).Scan(&totalAmount)
+		if queryErr != nil {
+			logger.Error(fmt.Sprintf("Failed to query expense total: %v", queryErr))
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
 		response := map[string]interface{}{
 			"total_amount": totalAmount.Float64,
+			"currency":     userCurrency,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -383,13 +402,14 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := `
-		SELECT 
-			e.id, 
-			e.amount, 
-			e.subcategory_id, 
-			e.user_id, 
-			e.note, 
+		SELECT
+			e.id,
+			e.amount,
+			e.subcategory_id,
+			e.user_id,
+			e.note,
 			e.created_at,
+			e.is_euro,
 			u.email as user_email,
 			s.name as subcategory_name,
 			c.id as category_id,
@@ -494,6 +514,7 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 			&userID,
 			&note,
 			&expense.CreatedAt,
+			&expense.IsEuro,
 			&userEmail,
 			&subcategoryName,
 			&categoryID,
@@ -550,43 +571,61 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(expenses)
 }
 
-func handleGroupedExpenses(w http.ResponseWriter, userIDStr, categoryIDStr, subcategoryIDStr, dateFromStr, dateToStr, groupByStr, orderBy, orderDir string) {
+func handleGroupedExpenses(w http.ResponseWriter, r *http.Request, userIDStr, categoryIDStr, subcategoryIDStr, dateFromStr, dateToStr, groupByStr, orderBy, orderDir string) {
+	// Get authenticated user's default currency
+	userCurrency := "BGN" // default fallback
+	authEmail, err := getAuthenticatedUserEmail(r.Header.Get("Authorization"))
+	if err == nil {
+		authUser, err := getUserByEmail(authEmail)
+		if err == nil && authUser != nil {
+			userCurrency = authUser.DefaultCurrency
+		}
+	}
+
+	// Build amount expression with currency conversion
+	var amountExpr string
+	if userCurrency == "EUR" {
+		amountExpr = fmt.Sprintf("CASE WHEN e.is_euro = 1 THEN e.amount ELSE e.amount / %f END", EURtoBGN)
+	} else {
+		amountExpr = fmt.Sprintf("CASE WHEN e.is_euro = 0 THEN e.amount ELSE e.amount * %f END", EURtoBGN)
+	}
+
 	var query string
 	var args []interface{}
 	var conditions []string
 
 	switch groupByStr {
 	case "category":
-		query = `
-			SELECT 
+		query = fmt.Sprintf(`
+			SELECT
 				c.id as category_id,
 				c.name as category_name,
-				SUM(e.amount) as total_amount,
+				SUM(%s) as total_amount,
 				COUNT(*) as expense_count
 			FROM expenses e
 			JOIN subcategories s ON e.subcategory_id = s.id
 			JOIN categories c ON s.category_id = c.id
-		`
+		`, amountExpr)
 	case "subcategory":
-		query = `
-			SELECT 
+		query = fmt.Sprintf(`
+			SELECT
 				s.id as subcategory_id,
 				s.name as subcategory_name,
-				SUM(e.amount) as total_amount,
+				SUM(%s) as total_amount,
 				COUNT(*) as expense_count
 			FROM expenses e
 			JOIN subcategories s ON e.subcategory_id = s.id
-		`
+		`, amountExpr)
 	case "user":
-		query = `
-			SELECT 
+		query = fmt.Sprintf(`
+			SELECT
 				COALESCE(e.user_id, 0) as user_id,
 				COALESCE(u.display_name, 'Unknown User') as user_name,
-				SUM(e.amount) as total_amount,
+				SUM(%s) as total_amount,
 				COUNT(*) as expense_count
 			FROM expenses e
 			LEFT JOIN users u ON e.user_id = u.id
-		`
+		`, amountExpr)
 	}
 
 	if userIDStr != "" {
@@ -690,6 +729,7 @@ func handleGroupedExpenses(w http.ResponseWriter, userIDStr, categoryIDStr, subc
 			"group_name": groupName,
 			"total":      totalAmount,
 			"count":      expenseCount,
+			"currency":   userCurrency,
 		}
 
 		groupedExpenses = append(groupedExpenses, group)
@@ -1037,6 +1077,7 @@ type CreateExpenseRequest struct {
 	SubcategoryID *int    `json:"subcategory_id,omitempty"`
 	UserID        *int    `json:"user_id,omitempty"`
 	Note          *string `json:"note,omitempty"`
+	IsEuro        *bool   `json:"is_euro,omitempty"`
 }
 
 func createExpenseHandler(w http.ResponseWriter, r *http.Request) {
@@ -1075,10 +1116,27 @@ func createExpenseHandler(w http.ResponseWriter, r *http.Request) {
 		note.Valid = true
 	}
 
+	// Determine is_euro value
+	var isEuro bool
+	if req.IsEuro != nil {
+		// Explicitly provided by client
+		isEuro = *req.IsEuro
+	} else {
+		// Use authenticated user's default currency
+		authEmail, err := getAuthenticatedUserEmail(r.Header.Get("Authorization"))
+		if err == nil {
+			authUser, err := getUserByEmail(authEmail)
+			if err == nil && authUser != nil {
+				isEuro = authUser.DefaultCurrency == "EUR"
+			}
+		}
+		// If anything fails, isEuro stays false (BGN) - backward compatible
+	}
+
 	result, err := db.Exec(`
-		INSERT INTO expenses (amount, subcategory_id, user_id, note, created_at)
-		VALUES (?, ?, ?, ?, NOW())
-	`, req.Amount, subcategoryID, userID, note)
+		INSERT INTO expenses (amount, subcategory_id, user_id, note, created_at, is_euro)
+		VALUES (?, ?, ?, ?, NOW(), ?)
+	`, req.Amount, subcategoryID, userID, note, isEuro)
 
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to create expense: %v", err))
@@ -1520,16 +1578,34 @@ func getGroupedExpensesBySubcategoryHandler(w http.ResponseWriter, r *http.Reque
 	dateFrom := startOfMonth.Format("2006-01-02")
 	dateTo := endOfMonth.Format("2006-01-02")
 
-	query := `
-		SELECT 
+	// Get authenticated user's default currency
+	userCurrency := "BGN" // default fallback
+	authEmail, err := getAuthenticatedUserEmail(r.Header.Get("Authorization"))
+	if err == nil {
+		authUser, err := getUserByEmail(authEmail)
+		if err == nil && authUser != nil {
+			userCurrency = authUser.DefaultCurrency
+		}
+	}
+
+	// Build amount expression with currency conversion
+	var amountExpr string
+	if userCurrency == "EUR" {
+		amountExpr = fmt.Sprintf("CASE WHEN e.is_euro = 1 THEN e.amount ELSE e.amount / %f END", EURtoBGN)
+	} else {
+		amountExpr = fmt.Sprintf("CASE WHEN e.is_euro = 0 THEN e.amount ELSE e.amount * %f END", EURtoBGN)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
 			s.name as subcategory_name,
 			c.name as category_name,
-			SUM(e.amount) as total_amount
+			SUM(%s) as total_amount
 		FROM expenses e
 		JOIN subcategories s ON e.subcategory_id = s.id
 		JOIN categories c ON s.category_id = c.id
 		WHERE DATE(e.created_at) >= ? AND DATE(e.created_at) <= ?
-	`
+	`, amountExpr)
 
 	var args []interface{}
 	args = append(args, dateFrom, dateTo)
@@ -1592,6 +1668,7 @@ func getGroupedExpensesBySubcategoryHandler(w http.ResponseWriter, r *http.Reque
 	response := map[string]interface{}{
 		"expenses": expenses,
 		"total":    fmt.Sprintf("%.2f", totalAmount),
+		"currency": userCurrency,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1652,4 +1729,82 @@ func getMemberUsersHandler(w http.ResponseWriter, r *http.Request) {
 		users = []map[string]interface{}{}
 	}
 	json.NewEncoder(w).Encode(users)
+}
+
+func getUserPreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get authenticated user
+	authEmail, err := getAuthenticatedUserEmail(r.Header.Get("Authorization"))
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := getUserByEmail(authEmail)
+	if err != nil || user == nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"default_currency": user.DefaultCurrency,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func updateUserPreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut && r.Method != http.MethodPatch {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get authenticated user
+	authEmail, err := getAuthenticatedUserEmail(r.Header.Get("Authorization"))
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := getUserByEmail(authEmail)
+	if err != nil || user == nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		DefaultCurrency string `json:"default_currency"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate currency
+	if req.DefaultCurrency != "EUR" && req.DefaultCurrency != "BGN" {
+		http.Error(w, "Invalid currency. Must be 'EUR' or 'BGN'", http.StatusBadRequest)
+		return
+	}
+
+	// Update user's default currency
+	_, err = db.Exec("UPDATE users SET default_currency = ? WHERE id = ?", req.DefaultCurrency, user.ID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to update user preferences: %v", err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"default_currency": req.DefaultCurrency,
+		"message":          "Preferences updated successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
